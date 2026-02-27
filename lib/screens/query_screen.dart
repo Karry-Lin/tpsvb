@@ -1,0 +1,751 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/slot_availability.dart';
+import '../models/sport_center.dart';
+import '../models/sport_type.dart';
+import '../providers/center_query_provider.dart';
+import '../providers/query_providers.dart';
+import '../providers/service_providers.dart';
+import '../widgets/filter_sheet.dart';
+import '../widgets/slot_detail_sheet.dart';
+import 'booking_info_screen.dart';
+
+/// 查詢主畫面（場館總覽矩陣）
+class QueryScreen extends ConsumerStatefulWidget {
+  const QueryScreen({super.key});
+
+  @override
+  ConsumerState<QueryScreen> createState() => _QueryScreenState();
+}
+
+class _QueryScreenState extends ConsumerState<QueryScreen> {
+  bool _hasInitialLoad = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_hasInitialLoad) {
+        _hasInitialLoad = true;
+        _startQuery(forceRefresh: false);
+      }
+    });
+  }
+
+  /// 觸發所有場館的並發查詢（分批控制最大 5 個同時進行）
+  Future<void> _startQuery({bool forceRefresh = false}) async {
+    final centers = ref.read(selectedCentersProvider);
+    final sportType = ref.read(selectedSportTypeProvider);
+    final dates = ref.read(queryDatesProvider);
+
+    if (forceRefresh) {
+      ref.read(queryCacheProvider).invalidateAll();
+      ref.read(lastUpdatedProvider.notifier).state = null;
+    }
+
+    // 分批並發（最大 5 個）
+    const batchSize = 5;
+    for (int i = 0; i < centers.length; i += batchSize) {
+      final batch = centers.sublist(
+        i,
+        (i + batchSize).clamp(0, centers.length),
+      );
+      await Future.wait(
+        batch.map((center) => ref
+            .read(sportCenterQueryProvider(center.id).notifier)
+            .query(
+              categoryId: sportType.id,
+              dates: dates,
+              forceRefresh: forceRefresh,
+            )),
+      );
+    }
+
+    ref.read(lastUpdatedProvider.notifier).state = DateTime.now();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final centers = ref.watch(selectedCentersProvider);
+    final sportType = ref.watch(selectedSportTypeProvider);
+    final dates = ref.watch(queryDatesProvider);
+    final progress = ref.watch(queryProgressProvider);
+    final lastUpdated = ref.watch(lastUpdatedProvider);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
+      appBar: AppBar(
+        title: const Text(
+          '場地查詢',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: const Color(0xFF1565C0),
+        foregroundColor: Colors.white,
+        actions: [
+          // 須知按鈕
+          TextButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const BookingInfoScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.info_outline, color: Colors.white, size: 18),
+            label: const Text(
+              '須知',
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+          // 篩選/設定按鈕
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: '篩選條件',
+            onPressed: () async {
+              final changed = await showModalBottomSheet<bool>(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const FilterSheet(),
+              );
+              if (changed == true && mounted) {
+                _startQuery(forceRefresh: true);
+              }
+            },
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => _startQuery(forceRefresh: true),
+        child: CustomScrollView(
+          slivers: [
+            // 進度條
+            SliverToBoxAdapter(
+              child: _ProgressBar(
+                done: progress.$1,
+                total: progress.$2,
+                lastUpdated: lastUpdated,
+              ),
+            ),
+
+            // 篩選摘要列
+            SliverToBoxAdapter(
+              child: _FilterSummaryBar(
+                sportType: sportType,
+                centersCount: centers.length,
+                datesCount: dates.length,
+              ),
+            ),
+
+            // 總覽矩陣
+            SliverToBoxAdapter(
+              child: _OverviewMatrix(
+                centers: centers,
+                dates: dates,
+                sportType: sportType,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 進度條元件
+class _ProgressBar extends StatelessWidget {
+  final int done;
+  final int total;
+  final DateTime? lastUpdated;
+
+  const _ProgressBar({
+    required this.done,
+    required this.total,
+    required this.lastUpdated,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isLoading = done < total;
+    if (!isLoading && lastUpdated == null) return const SizedBox.shrink();
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (isLoading) ...[
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1565C0)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '載入中 $done / $total 場館',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF1565C0),
+                  ),
+                ),
+              ] else if (lastUpdated != null) ...[
+                const Icon(Icons.check_circle, size: 14, color: Colors.green),
+                const SizedBox(width: 8),
+                Text(
+                  '最後更新：${lastUpdated!.hour.toString().padLeft(2, '0')}:${lastUpdated!.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(fontSize: 12, color: Colors.green),
+                ),
+              ],
+            ],
+          ),
+          if (isLoading) ...[
+            const SizedBox(height: 6),
+            LinearProgressIndicator(
+              value: total > 0 ? done / total : null,
+              backgroundColor: Colors.grey[200],
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(Color(0xFF1565C0)),
+              minHeight: 3,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 篩選摘要列
+class _FilterSummaryBar extends StatelessWidget {
+  final SportType sportType;
+  final int centersCount;
+  final int datesCount;
+
+  const _FilterSummaryBar({
+    required this.sportType,
+    required this.centersCount,
+    required this.datesCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          _Chip(icon: Icons.sports_tennis, label: sportType.name),
+          const SizedBox(width: 8),
+          _Chip(icon: Icons.location_on_outlined, label: '$centersCount 場館'),
+          const SizedBox(width: 8),
+          _Chip(icon: Icons.calendar_today_outlined, label: '$datesCount 天'),
+        ],
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _Chip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1565C0).withAlpha(20),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: const Color(0xFF1565C0)),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF1565C0),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 總覽矩陣（橫向可捲動）
+class _OverviewMatrix extends ConsumerWidget {
+  final List<SportCenter> centers;
+  final List<String> dates;
+  final SportType sportType;
+
+  const _OverviewMatrix({
+    required this.centers,
+    required this.dates,
+    required this.sportType,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (centers.isEmpty) {
+      return const _EmptyState(message: '請選擇至少一個場館');
+    }
+
+    final timeFilter = ref.watch(timeFilterProvider);
+
+    return Card(
+      margin: const EdgeInsets.all(8),
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 日期標題列
+            _DateHeaderRow(dates: dates),
+
+            // 各場館資料列
+            ...centers.map((center) => _CenterRow(
+                  center: center,
+                  dates: dates,
+                  sportType: sportType,
+                  timeFilter: timeFilter,
+                )),
+
+            // 圖例
+            const _Legend(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 日期標題列
+class _DateHeaderRow extends StatelessWidget {
+  final List<String> dates;
+  static const double _cellWidth = 68;
+  static const double _labelWidth = 80;
+
+  const _DateHeaderRow({required this.dates});
+
+  String _formatDateHeader(String dateStr) {
+    try {
+      final date = DateTime.parse(dateStr);
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final target = DateTime(date.year, date.month, date.day);
+      final diff = target.difference(today).inDays;
+
+      if (diff == 0) return '今天\n${date.month}/${date.day}';
+      if (diff == 1) return '明天\n${date.month}/${date.day}';
+      if (diff == 2) return '後天\n${date.month}/${date.day}';
+
+      const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+      final weekday = weekdays[date.weekday - 1];
+      return '周$weekday\n${date.month}/${date.day}';
+    } catch (_) {
+      return dateStr;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1565C0).withAlpha(13),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: _labelWidth,
+            child: const Padding(
+              padding: EdgeInsets.all(8),
+              child: Text(
+                '場館',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: Colors.black54,
+                ),
+              ),
+            ),
+          ),
+          ...dates.map((d) => SizedBox(
+                width: _cellWidth,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  child: Text(
+                    _formatDateHeader(d),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.black87,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+/// 單一場館的資料列
+class _CenterRow extends ConsumerWidget {
+  final SportCenter center;
+  final List<String> dates;
+  final SportType sportType;
+  final int timeFilter;
+
+  static const double _cellWidth = 68;
+  static const double _labelWidth = 80;
+  static const double _cellHeight = 48;
+
+  const _CenterRow({
+    required this.center,
+    required this.dates,
+    required this.sportType,
+    required this.timeFilter,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final queryState = ref.watch(sportCenterQueryProvider(center.id));
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: Colors.grey.withAlpha(51)),
+        ),
+      ),
+      child: Row(
+        children: [
+          // 場館名稱
+          SizedBox(
+            width: _labelWidth,
+            height: _cellHeight,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    center.name.replaceAll('運動中心', ''),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    center.district,
+                    style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 各日期的狀態格
+          ...dates.map((date) {
+            if (queryState.isLoading) {
+              return _SkeletonCell(width: _cellWidth, height: _cellHeight);
+            }
+
+            if (queryState.errorMessage != null) {
+              return Tooltip(
+                message: queryState.errorMessage!,
+                child: _StatusCell(
+                  width: _cellWidth,
+                  height: _cellHeight,
+                  status: SlotStatus.error,
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('${center.name}：${queryState.errorMessage}'),
+                        duration: const Duration(seconds: 5),
+                        backgroundColor: Colors.orange[800],
+                      ),
+                    );
+                  },
+                ),
+              );
+            }
+
+            final dayResult = queryState.resultsByDate[date];
+            if (dayResult == null) {
+              return _StatusCell(
+                width: _cellWidth,
+                height: _cellHeight,
+                status: SlotStatus.unavailable,
+                onTap: null,
+              );
+            }
+
+            // 時段篩選
+            final filteredResult = _applyTimeFilter(dayResult, timeFilter);
+
+            return _StatusCell(
+              width: _cellWidth,
+              height: _cellHeight,
+              status: filteredResult.overallStatus,
+              onTap: filteredResult.overallStatus == SlotStatus.available ||
+                      filteredResult.slots.isNotEmpty
+                  ? () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (_) => SlotDetailSheet(
+                          dayResult: filteredResult,
+                          center: center,
+                          categoryName: sportType.name,
+                        ),
+                      );
+                    }
+                  : null,
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  DayVenueResult _applyTimeFilter(DayVenueResult result, int filter) {
+    if (filter == 0) return result; // 全天不篩選
+
+    final filtered = result.slots.where((slot) {
+      final hour = int.tryParse(slot.startTime.split(':').first) ?? 0;
+      switch (filter) {
+        case 1: return hour >= 6 && hour < 12; // 早上
+        case 2: return hour >= 12 && hour < 18; // 下午
+        case 3: return hour >= 18 && hour < 22; // 晚上
+        default: return true;
+      }
+    }).toList();
+
+    final hasAvailable = filtered.any((s) => s.status == SlotStatus.available);
+    final allFull = filtered.isNotEmpty &&
+        filtered.every((s) => s.status == SlotStatus.full);
+
+    return DayVenueResult(
+      sportCenterId: result.sportCenterId,
+      date: result.date,
+      slots: filtered,
+      overallStatus: filtered.isEmpty
+          ? SlotStatus.unavailable
+          : hasAvailable
+              ? SlotStatus.available
+              : allFull
+                  ? SlotStatus.full
+                  : SlotStatus.unavailable,
+    );
+  }
+}
+
+/// 骨架屏格子（載入中動畫）
+class _SkeletonCell extends StatefulWidget {
+  final double width;
+  final double height;
+
+  const _SkeletonCell({required this.width, required this.height});
+
+  @override
+  State<_SkeletonCell> createState() => _SkeletonCellState();
+}
+
+class _SkeletonCellState extends State<_SkeletonCell>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
+    _anim = Tween<double>(begin: 0.3, end: 0.7).animate(_ctrl);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: widget.width,
+      height: widget.height,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: AnimatedBuilder(
+          animation: _anim,
+          builder: (context, child) => Container(
+            decoration: BoxDecoration(
+              color: Colors.grey.withValues(alpha: _anim.value),
+              borderRadius: BorderRadius.circular(6),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 狀態格子
+class _StatusCell extends StatelessWidget {
+  final double width;
+  final double height;
+  final SlotStatus status;
+  final VoidCallback? onTap;
+
+  const _StatusCell({
+    required this.width,
+    required this.height,
+    required this.status,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, icon, label) = switch (status) {
+      SlotStatus.available => (Colors.green, Icons.check_circle, '可預約'),
+      SlotStatus.full => (Colors.red, Icons.cancel, '已額滿'),
+      SlotStatus.unavailable => (Colors.grey, Icons.remove_circle, '未開放'),
+      SlotStatus.error => (Colors.orange, Icons.error_outline, '錯誤'),
+      SlotStatus.loading => (Colors.grey, Icons.hourglass_empty, '載入中'),
+    };
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Material(
+          color: color.withAlpha(20),
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: color.withAlpha(77),
+                  width: 1,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 16, color: color),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: color,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 圖例
+class _Legend extends StatelessWidget {
+  const _Legend();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.grey.withAlpha(20),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+      ),
+      child: Wrap(
+        spacing: 16,
+        runSpacing: 6,
+        children: const [
+          _LegendItem(color: Colors.green, label: '可預約'),
+          _LegendItem(color: Colors.red, label: '已額滿'),
+          _LegendItem(color: Colors.grey, label: '未開放'),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+
+  const _LegendItem({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+      ],
+    );
+  }
+}
+
+/// 空狀態提示
+class _EmptyState extends StatelessWidget {
+  final String message;
+  const _EmptyState({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(48),
+      child: Column(
+        children: [
+          const Icon(Icons.search_off, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            style: const TextStyle(color: Colors.grey, fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
+}
