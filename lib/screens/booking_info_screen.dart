@@ -17,6 +17,35 @@ class _BookingInfoScreenState extends State<BookingInfoScreen> {
   bool _isLoading = true;
   bool _hasError = false;
 
+  /// 將英文區名 h1 標題替換為中文的 JavaScript
+  static const String _replaceH1JS = r"""
+(function() {
+  var map = {
+    'Beitou Dist.':    '北投',
+    'Datong Dist.':    '大同',
+    'Neihu Dist.':     '內湖',
+    'Wanhua Dist.':    '萬華',
+    'Songshan Dist.':  '松山',
+    'Shihlin Dist.':   '士林',
+    'Zhongshan Dist.': '中山',
+    'Jhongjheng Dist.':'中正',
+    'Nangang Dist.':   '南港',
+    'Xinyi Dist.':     '信義',
+    "Da'an Dist.":     '大安',
+    'Wunshan Dist.':   '文山'
+  };
+  document.querySelectorAll('h1').forEach(function(el) {
+    var text = el.textContent || '';
+    for (var eng in map) {
+      if (text.indexOf(eng) !== -1) {
+        el.textContent = map[eng];
+        break;
+      }
+    }
+  });
+})();
+""";
+
   @override
   void initState() {
     super.initState();
@@ -27,7 +56,9 @@ class _BookingInfoScreenState extends State<BookingInfoScreen> {
           onPageStarted: (_) {
             if (mounted) setState(() => _isLoading = true);
           },
-          onPageFinished: (_) {
+          onPageFinished: (_) async {
+            // 注入 JS 將英文標題替換為中文
+            await _webController.runJavaScript(_replaceH1JS);
             if (mounted) setState(() => _isLoading = false);
           },
           onWebResourceError: (_) {

@@ -23,10 +23,13 @@ final dateRangeDaysProvider = StateProvider<int>((_) => 14);
 /// 時段篩選：0=全天, 1=早上(06-12), 2=下午(12-18), 3=晚上(18-22)
 final timeFilterProvider = StateProvider<int>((_) => 0);
 
-/// 計算查詢的日期清單（今天起 N 天）
+/// 計算查詢的日期清單（台北標準時間 UTC+8 起 N 天）
 final queryDatesProvider = Provider<List<String>>((ref) {
   final days = ref.watch(dateRangeDaysProvider);
-  final today = DateTime.now();
+  // 以台北時區（UTC+8）取得今天日期，避免跨午夜時顯示錯誤日期
+  final nowUtc = DateTime.now().toUtc();
+  final nowTaipei = nowUtc.add(const Duration(hours: 8));
+  final today = DateTime(nowTaipei.year, nowTaipei.month, nowTaipei.day);
   return List.generate(days, (i) {
     final d = today.add(Duration(days: i));
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';

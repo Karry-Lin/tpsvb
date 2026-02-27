@@ -13,8 +13,8 @@ class BookingApiService {
       : _dio = Dio(
           BaseOptions(
             baseUrl: _baseUrl,
-            connectTimeout: const Duration(seconds: 15),
-            receiveTimeout: const Duration(seconds: 20),
+            connectTimeout: const Duration(seconds: 8),
+            receiveTimeout: const Duration(seconds: 8),
             // 不在 BaseOptions.headers 設定 Content-Type
             // 讓各別請求的 Options.contentType 控制，避免干擾 JSON 回應解析
             headers: {
@@ -23,6 +23,10 @@ class BookingApiService {
               'Referer': 'https://booking-tpsc.sporetrofit.com/',
               'X-Requested-With': 'XMLHttpRequest',
             },
+            // 不自動跟隨重定向，改由程式邏輯判斷是否重試
+            followRedirects: false,
+            validateStatus: (status) =>
+                status != null && status >= 200 && status < 300,
           ),
         ) {
     if (kDebugMode) {
@@ -36,17 +40,60 @@ class BookingApiService {
           onResponse: (response, handler) {
             final body = response.data?.toString() ?? '';
             debugPrint('[API] ◀ ${response.statusCode} ${response.requestOptions.uri}');
-            debugPrint('[API]   body(200)=${body.substring(0, body.length.clamp(0, 300))}');
+            debugPrint('[API]   body(500)=${body.substring(0, body.length.clamp(0, 500))}');
             handler.next(response);
           },
           onError: (DioException e, handler) {
             debugPrint('[API] ✗ ${e.type} ${e.requestOptions.uri}');
             debugPrint('[API]   msg=${e.message}');
-            debugPrint('[API]   resp=${e.response?.data}');
+            debugPrint('[API]   resp=${e.response?.data}  status=${e.response?.statusCode}');
             handler.next(e);
           },
         ),
       );
+    }
+  }
+
+  /// 判斷此狀態碼是否可以重試（302 限流重定向、429 太多請求、5xx 伺服器錯誤）
+  bool _isRetryable(DioException e) {
+    final status = e.response?.statusCode;
+    if (status != null && (status == 302 || status == 429 || status >= 500)) {
+      return true;
+    }
+    // 連線/逾時類錯誤也可重試
+    return e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.connectionError;
+  }
+
+  /// 帶重試機制的 POST 請求（最多重試 3 次，指數退避：500ms / 1000ms / 2000ms）
+  Future<Response<dynamic>> _postWithRetry(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+    int maxRetries = 3,
+  }) async {
+    int attempt = 0;
+    while (true) {
+      try {
+        return await _dio.post(
+          path,
+          data: data,
+          queryParameters: queryParameters,
+          options: options,
+        );
+      } on DioException catch (e) {
+        attempt++;
+        if (attempt > maxRetries || !_isRetryable(e)) {
+          rethrow;
+        }
+        // 指數退避：500ms → 1000ms → 2000ms
+        final delay = Duration(milliseconds: 500 * (1 << (attempt - 1)));
+        debugPrint('[API] ↻ retry $attempt/$maxRetries after ${delay.inMilliseconds}ms (${e.response?.statusCode ?? e.type})');
+        await Future.delayed(delay);
+      }
     }
   }
 
@@ -60,7 +107,7 @@ class BookingApiService {
     required String end,
   }) async {
     try {
-      final response = await _dio.post(
+      final response = await _postWithRetry(
         '/Location/findAllowBookingCalendars',
         data: 'LID=$lid&categoryId=$categoryId&start=$start&end=$end',
         options: Options(
@@ -120,7 +167,7 @@ class BookingApiService {
     required String useDate,
   }) async {
     try {
-      final response = await _dio.post(
+      final response = await _postWithRetry(
         '/Location/findAllowBookingList',
         queryParameters: {
           'LID': lid,
@@ -179,6 +226,7 @@ class BookingApiService {
   }
 
   String _formatDioError(DioException e) {
+    final status = e.response?.statusCode;
     switch (e.type) {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
@@ -187,7 +235,10 @@ class BookingApiService {
       case DioExceptionType.connectionError:
         return '無法連線，請確認網路連線';
       case DioExceptionType.badResponse:
-        return 'API 回應異常（${e.response?.statusCode}）';
+        if (status == 302 || status == 429) {
+          return '伺服器暫時限制請求，請稍後再試';
+        }
+        return 'API 回應異常（$status）';
       default:
         return '網路錯誤：${e.message}';
     }

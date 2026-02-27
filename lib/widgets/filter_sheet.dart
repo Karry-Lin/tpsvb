@@ -105,7 +105,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                         setState(() {
                           _selectedSportType = SportType.all.first;
                           _selectedCenters = SportCenter.all;
-                          _dateRangeDays = 7;
+                          _dateRangeDays = 14;
                           _timeFilter = 0;
                         });
                       },
@@ -154,26 +154,40 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
 
                     // 查詢天數
                     _SectionTitle(title: '查詢天數'),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [7, 10, 14].map((days) {
-                        final selected = _dateRangeDays == days;
-                        return ChoiceChip(
-                          label: Text('$days 天'),
-                          selected: selected,
-                          onSelected: (_) =>
-                              setState(() => _dateRangeDays = days),
-                          selectedColor:
-                              const Color(0xFF1565C0).withAlpha(51),
-                          labelStyle: TextStyle(
-                            color: selected
-                                ? const Color(0xFF1565C0)
-                                : Colors.black87,
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Text('1', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                        Expanded(
+                          child: Slider(
+                            value: _dateRangeDays.toDouble(),
+                            min: 1,
+                            max: 14,
+                            divisions: 13,
+                            label: '$_dateRangeDays 天',
+                            activeColor: const Color(0xFF1565C0),
+                            onChanged: (v) =>
+                                setState(() => _dateRangeDays = v.round()),
                           ),
-                        );
-                      }).toList(),
+                        ),
+                        const Text('14', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1565C0).withAlpha(20),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '$_dateRangeDays 天',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF1565C0),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
 
                     const SizedBox(height: 24),

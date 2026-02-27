@@ -32,34 +32,31 @@ class _QueryScreenState extends ConsumerState<QueryScreen> {
     });
   }
 
-  /// 觸發所有場館的並發查詢（分批控制最大 5 個同時進行）
+  /// 觸發所有場館的並發查詢（全部同時發出）
   Future<void> _startQuery({bool forceRefresh = false}) async {
     final centers = ref.read(selectedCentersProvider);
     final sportType = ref.read(selectedSportTypeProvider);
     final dates = ref.read(queryDatesProvider);
 
-    if (forceRefresh) {
-      ref.read(queryCacheProvider).invalidateAll();
-      ref.read(lastUpdatedProvider.notifier).state = null;
+    // 清除快取與上次更新時間
+    ref.read(queryCacheProvider).invalidateAll();
+    ref.read(lastUpdatedProvider.notifier).state = null;
+
+    // 先立即將所有場館設為載入中（清空舊資料），避免使用者看到殘留的上次結果
+    for (final center in centers) {
+      ref.read(sportCenterQueryProvider(center.id).notifier).reset();
     }
 
-    // 分批並發（最大 5 個）
-    const batchSize = 5;
-    for (int i = 0; i < centers.length; i += batchSize) {
-      final batch = centers.sublist(
-        i,
-        (i + batchSize).clamp(0, centers.length),
-      );
-      await Future.wait(
-        batch.map((center) => ref
-            .read(sportCenterQueryProvider(center.id).notifier)
-            .query(
-              categoryId: sportType.id,
-              dates: dates,
-              forceRefresh: forceRefresh,
-            )),
-      );
-    }
+    // 全部場館同時並發查詢
+    await Future.wait(
+      centers.map((center) => ref
+          .read(sportCenterQueryProvider(center.id).notifier)
+          .query(
+            categoryId: sportType.id,
+            dates: dates,
+            forceRefresh: true,
+          )),
+    );
 
     ref.read(lastUpdatedProvider.notifier).state = DateTime.now();
   }
@@ -125,7 +122,6 @@ class _QueryScreenState extends ConsumerState<QueryScreen> {
               child: _ProgressBar(
                 done: progress.$1,
                 total: progress.$2,
-                lastUpdated: lastUpdated,
               ),
             ),
 
@@ -135,6 +131,7 @@ class _QueryScreenState extends ConsumerState<QueryScreen> {
                 sportType: sportType,
                 centersCount: centers.length,
                 datesCount: dates.length,
+                lastUpdated: lastUpdated,
               ),
             ),
 
@@ -145,6 +142,11 @@ class _QueryScreenState extends ConsumerState<QueryScreen> {
                 dates: dates,
                 sportType: sportType,
               ),
+            ),
+
+            // 錯誤場館彙總列（持續顯示在底部）
+            SliverToBoxAdapter(
+              child: _ErrorSummaryBar(centers: centers),
             ),
           ],
         ),
@@ -157,18 +159,16 @@ class _QueryScreenState extends ConsumerState<QueryScreen> {
 class _ProgressBar extends StatelessWidget {
   final int done;
   final int total;
-  final DateTime? lastUpdated;
 
   const _ProgressBar({
     required this.done,
     required this.total,
-    required this.lastUpdated,
   });
 
   @override
   Widget build(BuildContext context) {
     final isLoading = done < total;
-    if (!isLoading && lastUpdated == null) return const SizedBox.shrink();
+    if (!isLoading) return const SizedBox.shrink();
 
     return Container(
       color: Colors.white,
@@ -178,44 +178,33 @@ class _ProgressBar extends StatelessWidget {
         children: [
           Row(
             children: [
-              if (isLoading) ...[
-                const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1565C0)),
-                  ),
+              const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1565C0)),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  '載入中 $done / $total 場館',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF1565C0),
-                  ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '載入中 $done / $total 場館',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF1565C0),
                 ),
-              ] else if (lastUpdated != null) ...[
-                const Icon(Icons.check_circle, size: 14, color: Colors.green),
-                const SizedBox(width: 8),
-                Text(
-                  '最後更新：${lastUpdated!.hour.toString().padLeft(2, '0')}:${lastUpdated!.minute.toString().padLeft(2, '0')}',
-                  style: const TextStyle(fontSize: 12, color: Colors.green),
-                ),
-              ],
+              ),
             ],
           ),
-          if (isLoading) ...[
-            const SizedBox(height: 6),
-            LinearProgressIndicator(
-              value: total > 0 ? done / total : null,
-              backgroundColor: Colors.grey[200],
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(Color(0xFF1565C0)),
-              minHeight: 3,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ],
+          const SizedBox(height: 6),
+          LinearProgressIndicator(
+            value: total > 0 ? done / total : null,
+            backgroundColor: Colors.grey[200],
+            valueColor:
+                const AlwaysStoppedAnimation<Color>(Color(0xFF1565C0)),
+            minHeight: 3,
+            borderRadius: BorderRadius.circular(2),
+          ),
         ],
       ),
     );
@@ -223,30 +212,53 @@ class _ProgressBar extends StatelessWidget {
 }
 
 /// 篩選摘要列
-class _FilterSummaryBar extends StatelessWidget {
+class _FilterSummaryBar extends ConsumerWidget {
   final SportType sportType;
   final int centersCount;
   final int datesCount;
+  final DateTime? lastUpdated;
 
   const _FilterSummaryBar({
     required this.sportType,
     required this.centersCount,
     required this.datesCount,
+    required this.lastUpdated,
   });
 
+  static const List<String> _timeFilterLabels = ['全天', '早上', '下午', '晚上'];
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final timeFilter = ref.watch(timeFilterProvider);
+    final timeLabel = _timeFilterLabels[timeFilter.clamp(0, 3)];
+
+    // 最後更新時間字串（UTC+8）
+    String? updatedLabel;
+    if (lastUpdated != null) {
+      final taipei = lastUpdated!.toUtc().add(const Duration(hours: 8));
+      updatedLabel =
+          '更新 ${taipei.hour.toString().padLeft(2, '0')}:${taipei.minute.toString().padLeft(2, '0')}';
+    }
+
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       margin: const EdgeInsets.only(bottom: 4),
-      child: Row(
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           _Chip(icon: Icons.sports_tennis, label: sportType.name),
-          const SizedBox(width: 8),
           _Chip(icon: Icons.location_on_outlined, label: '$centersCount 場館'),
-          const SizedBox(width: 8),
           _Chip(icon: Icons.calendar_today_outlined, label: '$datesCount 天'),
+          _Chip(icon: Icons.schedule_outlined, label: timeLabel),
+          if (updatedLabel != null)
+            _Chip(
+              icon: Icons.check_circle,
+              label: updatedLabel,
+              color: Colors.green,
+            ),
         ],
       ),
     );
@@ -256,27 +268,29 @@ class _FilterSummaryBar extends StatelessWidget {
 class _Chip extends StatelessWidget {
   final IconData icon;
   final String label;
+  final Color? color;
 
-  const _Chip({required this.icon, required this.label});
+  const _Chip({required this.icon, required this.label, this.color});
 
   @override
   Widget build(BuildContext context) {
+    final chipColor = color ?? const Color(0xFF1565C0);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF1565C0).withAlpha(20),
+        color: chipColor.withAlpha(20),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13, color: const Color(0xFF1565C0)),
+          Icon(icon, size: 13, color: chipColor),
           const SizedBox(width: 4),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: Color(0xFF1565C0),
+              color: chipColor,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -346,8 +360,9 @@ class _DateHeaderRow extends StatelessWidget {
   String _formatDateHeader(String dateStr) {
     try {
       final date = DateTime.parse(dateStr);
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
+      // 以台北時區（UTC+8）判斷今天，與 queryDatesProvider 一致
+      final nowTaipei = DateTime.now().toUtc().add(const Duration(hours: 8));
+      final today = DateTime(nowTaipei.year, nowTaipei.month, nowTaipei.day);
       final target = DateTime(date.year, date.month, date.day);
       final diff = target.difference(today).inDays;
 
@@ -723,6 +738,63 @@ class _LegendItem extends StatelessWidget {
         const SizedBox(width: 4),
         Text(label, style: const TextStyle(fontSize: 11, color: Colors.black54)),
       ],
+    );
+  }
+}
+
+/// 錯誤場館彙總列（持續顯示，無需點擊）
+class _ErrorSummaryBar extends ConsumerWidget {
+  final List<SportCenter> centers;
+
+  const _ErrorSummaryBar({required this.centers});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final errorCenters = centers.where((c) {
+      final state = ref.watch(sportCenterQueryProvider(c.id));
+      return !state.isLoading && state.errorMessage != null;
+    }).toList();
+
+    if (errorCenters.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.orange[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.withAlpha(100)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange[800]),
+              const SizedBox(width: 6),
+              Text(
+                '${errorCenters.length} 個場館查詢失敗',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange[800],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ...errorCenters.map((c) {
+            final msg = ref.read(sportCenterQueryProvider(c.id)).errorMessage ?? '';
+            return Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                '• ${c.name}：$msg',
+                style: TextStyle(fontSize: 11, color: Colors.orange[900]),
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 }

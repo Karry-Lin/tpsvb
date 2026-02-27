@@ -59,11 +59,12 @@ class SportCenterQueryNotifier
     }
   }
 
+  /// 重置為載入中狀態（清空舊資料，顯示骨架屏）
   void reset() {
     state = SportCenterQueryState(
       sportCenterId: sportCenterId,
       resultsByDate: {},
-      isLoading: false,
+      isLoading: true,
     );
   }
 }
