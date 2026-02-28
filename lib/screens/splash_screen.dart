@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/query_providers.dart';
-import 'query_screen.dart';
+import 'main_screen.dart';
 
 /// 啟動首頁（Landing Page）
 class SplashScreen extends ConsumerStatefulWidget {
@@ -52,7 +52,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   void _navigateToQuery() {
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const QueryScreen()),
+      MaterialPageRoute(builder: (_) => const MainScreen()),
     );
   }
 

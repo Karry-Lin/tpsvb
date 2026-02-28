@@ -5,151 +5,79 @@ import '../models/sport_center.dart';
 import '../models/sport_type.dart';
 import '../providers/center_query_provider.dart';
 import '../providers/query_providers.dart';
-import '../providers/service_providers.dart';
-import '../widgets/filter_sheet.dart';
 import '../widgets/slot_detail_sheet.dart';
-import 'booking_info_screen.dart';
 
 /// 查詢主畫面（場館總覽矩陣）
-class QueryScreen extends ConsumerStatefulWidget {
-  const QueryScreen({super.key});
+/// [hasQueried]：是否已進行過查詢（由 MainScreen 傳入）
+/// [onRefresh]：下拉重新整理回呼（由 MainScreen 管理查詢邏輯）
+class QueryScreen extends ConsumerWidget {
+  final bool hasQueried;
+  final Future<void> Function() onRefresh;
+
+  const QueryScreen({
+    super.key,
+    required this.hasQueried,
+    required this.onRefresh,
+  });
 
   @override
-  ConsumerState<QueryScreen> createState() => _QueryScreenState();
-}
-
-class _QueryScreenState extends ConsumerState<QueryScreen> {
-  bool _hasInitialLoad = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_hasInitialLoad) {
-        _hasInitialLoad = true;
-        _startQuery(forceRefresh: false);
-      }
-    });
-  }
-
-  /// 觸發所有場館的並發查詢（全部同時發出）
-  Future<void> _startQuery({bool forceRefresh = false}) async {
-    final centers = ref.read(selectedCentersProvider);
-    final sportType = ref.read(selectedSportTypeProvider);
-    final dates = ref.read(queryDatesProvider);
-
-    // 清除快取與上次更新時間
-    ref.read(queryCacheProvider).invalidateAll();
-    ref.read(lastUpdatedProvider.notifier).state = null;
-
-    // 先立即將所有場館設為載入中（清空舊資料），避免使用者看到殘留的上次結果
-    for (final center in centers) {
-      ref.read(sportCenterQueryProvider(center.id).notifier).reset();
-    }
-
-    // 全部場館同時並發查詢
-    await Future.wait(
-      centers.map((center) => ref
-          .read(sportCenterQueryProvider(center.id).notifier)
-          .query(
-            categoryId: sportType.id,
-            dates: dates,
-            forceRefresh: true,
-          )),
-    );
-
-    ref.read(lastUpdatedProvider.notifier).state = DateTime.now();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final centers = ref.watch(selectedCentersProvider);
     final sportType = ref.watch(selectedSportTypeProvider);
     final dates = ref.watch(queryDatesProvider);
     final progress = ref.watch(queryProgressProvider);
     final lastUpdated = ref.watch(lastUpdatedProvider);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      appBar: AppBar(
-        title: const Text(
-          '場地查詢',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: const Color(0xFF1565C0),
-        foregroundColor: Colors.white,
-        actions: [
-          // 須知按鈕
-          TextButton.icon(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const BookingInfoScreen(),
-                ),
-              );
-            },
-            icon: const Icon(Icons.info_outline, color: Colors.white, size: 18),
-            label: const Text(
-              '須知',
-              style: TextStyle(color: Colors.white, fontSize: 13),
+    // 尚未查詢時顯示空白提示
+    if (!hasQueried) {
+      return CustomScrollView(
+        slivers: [
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: _EmptyState(message: '請點選右上角篩選圖示\n設定條件後開始查詢'),
             ),
-          ),
-          // 篩選/設定按鈕
-          IconButton(
-            icon: const Icon(Icons.tune),
-            tooltip: '篩選條件',
-            onPressed: () async {
-              final changed = await showModalBottomSheet<bool>(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => const FilterSheet(),
-              );
-              if (changed == true && mounted) {
-                _startQuery(forceRefresh: true);
-              }
-            },
           ),
         ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => _startQuery(forceRefresh: true),
-        child: CustomScrollView(
-          slivers: [
-            // 進度條
-            SliverToBoxAdapter(
-              child: _ProgressBar(
-                done: progress.$1,
-                total: progress.$2,
-              ),
-            ),
+      );
+    }
 
-            // 篩選摘要列
-            SliverToBoxAdapter(
-              child: _FilterSummaryBar(
-                sportType: sportType,
-                centersCount: centers.length,
-                datesCount: dates.length,
-                lastUpdated: lastUpdated,
-              ),
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: CustomScrollView(
+        slivers: [
+          // 進度條
+          SliverToBoxAdapter(
+            child: _ProgressBar(
+              done: progress.$1,
+              total: progress.$2,
             ),
+          ),
 
-            // 總覽矩陣
-            SliverToBoxAdapter(
-              child: _OverviewMatrix(
-                centers: centers,
-                dates: dates,
-                sportType: sportType,
-              ),
+          // 篩選摘要列
+          SliverToBoxAdapter(
+            child: _FilterSummaryBar(
+              sportType: sportType,
+              centersCount: centers.length,
+              datesCount: dates.length,
+              lastUpdated: lastUpdated,
             ),
+          ),
 
-            // 錯誤場館彙總列（持續顯示在底部）
-            SliverToBoxAdapter(
-              child: _ErrorSummaryBar(centers: centers),
+          // 總覽矩陣
+          SliverToBoxAdapter(
+            child: _OverviewMatrix(
+              centers: centers,
+              dates: dates,
+              sportType: sportType,
             ),
-          ],
-        ),
+          ),
+
+          // 錯誤場館彙總列（持續顯示在底部）
+          SliverToBoxAdapter(
+            child: _ErrorSummaryBar(centers: centers),
+          ),
+        ],
       ),
     );
   }
@@ -809,11 +737,13 @@ class _EmptyState extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(48),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(Icons.search_off, size: 64, color: Colors.grey),
           const SizedBox(height: 16),
           Text(
             message,
+            textAlign: TextAlign.center,
             style: const TextStyle(color: Colors.grey, fontSize: 16),
           ),
         ],
