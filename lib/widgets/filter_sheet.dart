@@ -96,7 +96,8 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                     const Text(
                       '篩選條件',
                       style: TextStyle(
-                        fontSize: 18,
+                        fontFamily: 'ChenYuluoyan',
+                        fontSize: 30,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

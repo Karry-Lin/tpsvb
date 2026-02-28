@@ -92,10 +92,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                       const Text(
                         '場訂',
                         style: TextStyle(
+                          fontFamily: 'ChenYuluoyan',
                           color: Colors.white,
-                          fontSize: 48,
+                          fontSize: 64,
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 8,
+                          letterSpacing: 12,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -103,9 +104,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                       const Text(
                         '台北市公立運動場地預約查詢',
                         style: TextStyle(
+                          fontFamily: 'ChenYuluoyan',
                           color: Colors.white70,
-                          fontSize: 14,
-                          letterSpacing: 1.0,
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.5,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -113,11 +116,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
                       // 副標題
                       Text(
-                        '快速瀏覽各運動中心場地預約狀況',
+                        '快速瀏覽場地預約狀況',
                         style: TextStyle(
+                          fontFamily: 'ChenYuluoyan',
                           color: Colors.white.withAlpha(204),
-                          fontSize: 14,
-                          letterSpacing: 0.5,
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0,
                         ),
                         textAlign: TextAlign.center,
                       ),

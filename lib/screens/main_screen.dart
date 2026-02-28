@@ -98,7 +98,11 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       appBar: AppBar(
         title: Text(
           _currentTab == 0 ? '快速瀏覽' : '完整查詢',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            fontFamily: 'ChenYuluoyan',
+            fontSize: 30,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         backgroundColor: const Color(0xFF1565C0),
         foregroundColor: Colors.white,

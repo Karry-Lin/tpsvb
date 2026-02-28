@@ -69,6 +69,12 @@ flutter:
     - assets/images/
     - assets/icon/
     - assets/sounds/
+    - assets/font/
+
+  fonts:
+    - family: ChenYuluoyan
+      fonts:
+        - asset: assets/font/ChenYuluoyan-Thin.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:
