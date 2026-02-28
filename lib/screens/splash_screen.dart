@@ -106,7 +106,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                         style: TextStyle(
                           fontFamily: 'ChenYuluoyan',
                           color: Colors.white70,
-                          fontSize: 30,
+                          fontSize: 26,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1.5,
                         ),
@@ -120,7 +120,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                         style: TextStyle(
                           fontFamily: 'ChenYuluoyan',
                           color: Colors.white.withAlpha(204),
-                          fontSize: 30,
+                          fontSize: 26,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 1.0,
                         ),
