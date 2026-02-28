@@ -281,6 +281,14 @@ class _FilterSummaryBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final timeFilter = ref.watch(timeFilterProvider);
     final timeLabel = _timeFilterLabels[timeFilter.clamp(0, 3)];
+    final lastUpdated = ref.watch(lastUpdatedProvider);
+
+    String? updatedLabel;
+    if (lastUpdated != null) {
+      final taipei = lastUpdated.toUtc().add(const Duration(hours: 8));
+      updatedLabel =
+          '更新 ${taipei.hour.toString().padLeft(2, '0')}:${taipei.minute.toString().padLeft(2, '0')}';
+    }
 
     return Container(
       color: Colors.white,
@@ -297,6 +305,12 @@ class _FilterSummaryBar extends ConsumerWidget {
           _SummaryChip(
               icon: Icons.calendar_today_outlined, label: '$datesCount 天'),
           _SummaryChip(icon: Icons.schedule_outlined, label: timeLabel),
+          if (updatedLabel != null)
+            _SummaryChip(
+              icon: Icons.check_circle,
+              label: updatedLabel,
+              color: Colors.green,
+            ),
         ],
       ),
     );
@@ -306,12 +320,13 @@ class _FilterSummaryBar extends ConsumerWidget {
 class _SummaryChip extends StatelessWidget {
   final IconData icon;
   final String label;
+  final Color? color;
 
-  const _SummaryChip({required this.icon, required this.label});
+  const _SummaryChip({required this.icon, required this.label, this.color});
 
   @override
   Widget build(BuildContext context) {
-    const chipColor = Color(0xFF1565C0);
+    final chipColor = color ?? const Color(0xFF1565C0);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -325,7 +340,7 @@ class _SummaryChip extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               color: chipColor,
               fontWeight: FontWeight.w500,
