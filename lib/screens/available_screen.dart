@@ -25,7 +25,7 @@ class AvailableScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final centers = ref.watch(selectedCentersProvider);
     final sportType = ref.watch(selectedSportTypeProvider);
-    final dates = ref.watch(queryDatesProvider);
+    final dates = ref.watch(activeDatesProvider);
     final progress = ref.watch(queryProgressProvider);
     final timeFilter = ref.watch(timeFilterProvider);
 

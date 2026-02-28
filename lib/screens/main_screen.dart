@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/center_query_provider.dart';
 import '../providers/query_providers.dart';
-import '../providers/service_providers.dart';
-import '../widgets/filter_sheet.dart';
+import '../providers/service_providers.dart';import '../widgets/filter_sheet.dart';
 import 'available_screen.dart';
 import 'booking_info_screen.dart';
 import 'query_screen.dart';
@@ -50,11 +49,15 @@ class _MainScreenState extends ConsumerState<MainScreen> {
   Future<void> _startQuery() async {
     final centers = ref.read(selectedCentersProvider);
     final sportType = ref.read(selectedSportTypeProvider);
-    final dates = ref.read(queryDatesProvider);
+    // 每次查詢都即時計算日期，確保使用當天台北時間，不受 Provider 快取影響
+    final days = ref.read(dateRangeDaysProvider);
+    final dates = buildQueryDates(days);
 
     // 清除快取與上次更新時間
     ref.read(queryCacheProvider).invalidateAll();
     ref.read(lastUpdatedProvider.notifier).state = null;
+    // 同步更新 UI 顯示用的日期清單
+    ref.read(activeDatesProvider.notifier).state = dates;
 
     // 先將所有場館設為載入中（清空舊資料）
     for (final center in centers) {
