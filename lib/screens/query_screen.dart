@@ -30,42 +30,30 @@ class QueryScreen extends ConsumerWidget {
 
     // 尚未查詢時顯示空白提示
     if (!hasQueried) {
-      return CustomScrollView(
-        slivers: [
-          const SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(
-              child: _EmptyState(message: '請點選右上角篩選圖示\n設定條件後開始查詢'),
-            ),
-          ),
-        ],
+      return const Center(
+        child: _EmptyState(message: '請點選右上角篩選圖示\n設定條件後開始查詢'),
       );
     }
 
+    // Column + Expanded：讓 _OverviewMatrix 填滿剩餘高度
+    // RefreshIndicator 需要可滾動子 widget，在此用 NotificationListener 轉接
     return RefreshIndicator(
       onRefresh: onRefresh,
-      child: CustomScrollView(
-        slivers: [
-          // 進度條
-          SliverToBoxAdapter(
-            child: _ProgressBar(
-              done: progress.$1,
-              total: progress.$2,
-            ),
-          ),
+      child: Column(
+        children: [
+          // 進度條（loading 時才顯示，高度自適應）
+          _ProgressBar(done: progress.$1, total: progress.$2),
 
           // 篩選摘要列
-          SliverToBoxAdapter(
-            child: _FilterSummaryBar(
-              sportType: sportType,
-              centersCount: centers.length,
-              datesCount: dates.length,
-              lastUpdated: lastUpdated,
-            ),
+          _FilterSummaryBar(
+            sportType: sportType,
+            centersCount: centers.length,
+            datesCount: dates.length,
+            lastUpdated: lastUpdated,
           ),
 
-          // 總覽矩陣
-          SliverToBoxAdapter(
+          // 總覽矩陣：Expanded 填滿剩餘高度
+          Expanded(
             child: _OverviewMatrix(
               centers: centers,
               dates: dates,
@@ -73,10 +61,8 @@ class QueryScreen extends ConsumerWidget {
             ),
           ),
 
-          // 錯誤場館彙總列（持續顯示在底部）
-          SliverToBoxAdapter(
-            child: _ErrorSummaryBar(centers: centers),
-          ),
+          // 錯誤場館彙總列（固定在底部）
+          _ErrorSummaryBar(centers: centers),
         ],
       ),
     );
@@ -170,8 +156,8 @@ class _FilterSummaryBar extends ConsumerWidget {
 
     return Container(
       color: Colors.white,
+      width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-      margin: const EdgeInsets.only(bottom: 4),
       child: Wrap(
         spacing: 8,
         runSpacing: 6,
@@ -228,11 +214,17 @@ class _Chip extends StatelessWidget {
   }
 }
 
-/// 總覽矩陣（橫向可捲動）
+/// 總覽矩陣（自動填滿可用寬高）
 class _OverviewMatrix extends ConsumerWidget {
   final List<SportCenter> centers;
   final List<String> dates;
   final SportType sportType;
+
+  static const double _minCellWidth = 56;
+  static const double _labelWidth = 80;
+  static const double _headerHeight = 48;
+  static const double _legendHeight = 40;
+  static const double _minRowHeight = 48;
 
   const _OverviewMatrix({
     required this.centers,
@@ -248,31 +240,76 @@ class _OverviewMatrix extends ConsumerWidget {
 
     final timeFilter = ref.watch(timeFilterProvider);
 
-    return Card(
-      margin: const EdgeInsets.all(8),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 日期標題列
-            _DateHeaderRow(dates: dates),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // ── 寬度計算 ──────────────────────────────
+        // 扣掉 Card margin (8*2) 和 label 欄後，平均分配給各日期欄
+        final cardInnerWidth = constraints.maxWidth - 16;
+        final cellWidth = dates.isEmpty
+            ? _minCellWidth
+            : ((cardInnerWidth - _labelWidth) / dates.length)
+                .clamp(_minCellWidth, double.infinity);
 
-            // 各場館資料列
-            ...centers.map((center) => _CenterRow(
-                  center: center,
-                  dates: dates,
-                  sportType: sportType,
-                  timeFilter: timeFilter,
-                )),
+        // ── 高度計算 ──────────────────────────────
+        // 扣掉 Card margin (8*2)、header、legend 後，平均分配給各場館列
+        final cardInnerHeight = constraints.maxHeight - 16;
+        final rowsHeight = cardInnerHeight - _headerHeight - _legendHeight;
+        final rowHeight = centers.isEmpty
+            ? _minRowHeight
+            : (rowsHeight / centers.length).clamp(_minRowHeight, double.infinity);
 
-            // 圖例
-            const _Legend(),
-          ],
-        ),
-      ),
+        // table 實際高度 = header + 各列 + legend
+        final tableHeight =
+            _headerHeight + rowHeight * centers.length + _legendHeight;
+
+        return Card(
+          margin: const EdgeInsets.all(8),
+          elevation: 1,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          // 橫向超出時才允許捲動
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: (cellWidth * dates.length + _labelWidth)
+                  .clamp(cardInnerWidth, double.infinity),
+              height: tableHeight,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 日期標題列
+                  SizedBox(
+                    height: _headerHeight,
+                    child: _DateHeaderRow(
+                      dates: dates,
+                      cellWidth: cellWidth,
+                      labelWidth: _labelWidth,
+                    ),
+                  ),
+
+                  // 各場館資料列
+                  ...centers.map((center) => SizedBox(
+                        height: rowHeight,
+                        child: _CenterRow(
+                          center: center,
+                          dates: dates,
+                          sportType: sportType,
+                          timeFilter: timeFilter,
+                          cellWidth: cellWidth,
+                          labelWidth: _labelWidth,
+                        ),
+                      )),
+
+                  // 圖例
+                  SizedBox(
+                    height: _legendHeight,
+                    child: const _Legend(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -280,10 +317,14 @@ class _OverviewMatrix extends ConsumerWidget {
 /// 日期標題列
 class _DateHeaderRow extends StatelessWidget {
   final List<String> dates;
-  static const double _cellWidth = 68;
-  static const double _labelWidth = 80;
+  final double cellWidth;
+  final double labelWidth;
 
-  const _DateHeaderRow({required this.dates});
+  const _DateHeaderRow({
+    required this.dates,
+    required this.cellWidth,
+    required this.labelWidth,
+  });
 
   String _formatDateHeader(String dateStr) {
     try {
@@ -316,7 +357,7 @@ class _DateHeaderRow extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: _labelWidth,
+            width: labelWidth,
             child: const Padding(
               padding: EdgeInsets.all(8),
               child: Text(
@@ -330,7 +371,7 @@ class _DateHeaderRow extends StatelessWidget {
             ),
           ),
           ...dates.map((d) => SizedBox(
-                width: _cellWidth,
+                width: cellWidth,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   child: Text(
@@ -356,16 +397,16 @@ class _CenterRow extends ConsumerWidget {
   final List<String> dates;
   final SportType sportType;
   final int timeFilter;
-
-  static const double _cellWidth = 68;
-  static const double _labelWidth = 80;
-  static const double _cellHeight = 48;
+  final double cellWidth;
+  final double labelWidth;
 
   const _CenterRow({
     required this.center,
     required this.dates,
     required this.sportType,
     required this.timeFilter,
+    required this.cellWidth,
+    required this.labelWidth,
   });
 
   @override
@@ -380,10 +421,10 @@ class _CenterRow extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          // 場館名稱
+          // 場館名稱（寬度固定，高度由外層 SizedBox 決定）
           SizedBox(
-            width: _labelWidth,
-            height: _cellHeight,
+            width: labelWidth,
+            height: double.infinity,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Column(
@@ -406,18 +447,18 @@ class _CenterRow extends ConsumerWidget {
               ),
             ),
           ),
-          // 各日期的狀態格
+          // 各日期的狀態格（高度填滿列高）
           ...dates.map((date) {
             if (queryState.isLoading) {
-              return _SkeletonCell(width: _cellWidth, height: _cellHeight);
+              return _SkeletonCell(width: cellWidth, height: double.infinity);
             }
 
             if (queryState.errorMessage != null) {
               return Tooltip(
                 message: queryState.errorMessage!,
                 child: _StatusCell(
-                  width: _cellWidth,
-                  height: _cellHeight,
+                  width: cellWidth,
+                  height: double.infinity,
                   status: SlotStatus.error,
                   onTap: () {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -435,8 +476,8 @@ class _CenterRow extends ConsumerWidget {
             final dayResult = queryState.resultsByDate[date];
             if (dayResult == null) {
               return _StatusCell(
-                width: _cellWidth,
-                height: _cellHeight,
+                width: cellWidth,
+                height: double.infinity,
                 status: SlotStatus.unavailable,
                 onTap: null,
               );
@@ -446,8 +487,8 @@ class _CenterRow extends ConsumerWidget {
             final filteredResult = _applyTimeFilter(dayResult, timeFilter);
 
             return _StatusCell(
-              width: _cellWidth,
-              height: _cellHeight,
+              width: cellWidth,
+              height: double.infinity,
               status: filteredResult.overallStatus,
               onTap: filteredResult.overallStatus == SlotStatus.available ||
                       filteredResult.slots.isNotEmpty
