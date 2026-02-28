@@ -5,6 +5,7 @@ import '../models/sport_center.dart';
 import '../models/sport_type.dart';
 import '../providers/center_query_provider.dart';
 import '../providers/query_providers.dart';
+import '../providers/service_providers.dart';
 import '../widgets/slot_detail_sheet.dart';
 
 /// 速覽頁：只顯示有可預約時段的場館，以日期 Tag 方式呈現
@@ -356,14 +357,14 @@ class _SummaryChip extends StatelessWidget {
 // 場館卡片
 // ─────────────────────────────────────────────
 
-class _CenterCard extends StatelessWidget {
+class _CenterCard extends ConsumerWidget {
   final _CenterAvailability data;
   final SportType sportType;
 
   const _CenterCard({required this.data, required this.sportType});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 6, 12, 2),
       elevation: 1,
@@ -436,6 +437,7 @@ class _CenterCard extends StatelessWidget {
                   date: day.date,
                   count: day.availableCount,
                   onTap: () {
+                    ref.read(audioServiceProvider).playButton();
                     showModalBottomSheet(
                       context: context,
                       isScrollControlled: true,

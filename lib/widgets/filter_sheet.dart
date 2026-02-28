@@ -36,6 +36,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
   }
 
   void _applyAndClose() async {
+    ref.read(audioServiceProvider).playButton();
     // 更新 Providers
     ref.read(selectedSportTypeProvider.notifier).state = _selectedSportType;
     ref.read(selectedCentersProvider.notifier).state =

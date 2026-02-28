@@ -47,6 +47,7 @@ class _MainScreenState extends ConsumerState<MainScreen> {
 
   /// 觸發所有選取場館的並發查詢
   Future<void> _startQuery() async {
+    final audio = ref.read(audioServiceProvider);
     final centers = ref.read(selectedCentersProvider);
     final sportType = ref.read(selectedSportTypeProvider);
     // 每次查詢都即時計算日期，確保使用當天台北時間，不受 Provider 快取影響
@@ -68,6 +69,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
       _hasQueried = true;
     });
 
+    // 開始搜尋音效（循環）
+    await audio.startSearching();
+
     // 全部場館同時並發查詢
     await Future.wait(
       centers.map(
@@ -82,6 +86,9 @@ class _MainScreenState extends ConsumerState<MainScreen> {
     );
 
     ref.read(lastUpdatedProvider.notifier).state = DateTime.now();
+
+    // 查詢完成：停止搜尋音效，播放成功音效
+    await audio.playSuccess();
   }
 
   @override

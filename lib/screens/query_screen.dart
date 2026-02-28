@@ -5,6 +5,7 @@ import '../models/sport_center.dart';
 import '../models/sport_type.dart';
 import '../providers/center_query_provider.dart';
 import '../providers/query_providers.dart';
+import '../providers/service_providers.dart';
 import '../widgets/slot_detail_sheet.dart';
 
 /// 查詢主畫面（場館總覽矩陣）
@@ -461,6 +462,7 @@ class _CenterRow extends ConsumerWidget {
                   height: double.infinity,
                   status: SlotStatus.error,
                   onTap: () {
+                    ref.read(audioServiceProvider).playButton();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('${center.name}：${queryState.errorMessage}'),
@@ -493,6 +495,7 @@ class _CenterRow extends ConsumerWidget {
               onTap: filteredResult.overallStatus == SlotStatus.available ||
                       filteredResult.slots.isNotEmpty
                   ? () {
+                      ref.read(audioServiceProvider).playButton();
                       showModalBottomSheet(
                         context: context,
                         isScrollControlled: true,

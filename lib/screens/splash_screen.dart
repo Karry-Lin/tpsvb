@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/query_providers.dart';
+import '../providers/service_providers.dart';
 import 'main_screen.dart';
 
 /// 啟動首頁（Landing Page）
@@ -51,6 +52,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   void _navigateToQuery() {
+    ref.read(audioServiceProvider).playButton();
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const MainScreen()),
     );
@@ -75,56 +77,51 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // App 圖示
-                      Container(
-                        width: 96,
-                        height: 96,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withAlpha(38),
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: const Icon(
-                          Icons.sports_tennis,
-                          size: 56,
-                          color: Colors.white,
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: Image.asset(
+                          'assets/icon/icon.png',
+                          width: 96,
+                          height: 96,
+                          fit: BoxFit.cover,
                         ),
                       ),
                       const SizedBox(height: 32),
 
-                      // 系統全名
+                      // App 名稱
                       const Text(
-                        '臺北市公立運動場地',
+                        '場訂',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 26,
+                          fontSize: 48,
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 1.5,
-                          height: 1.4,
+                          letterSpacing: 8,
                         ),
                         textAlign: TextAlign.center,
                       ),
+                      const SizedBox(height: 8),
                       const Text(
-                        '預約查詢系統',
+                        '台北市公立運動場地預約查詢',
                         style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.5,
+                          color: Colors.white70,
+                          fontSize: 14,
+                          letterSpacing: 1.0,
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 8),
 
                       // 副標題
                       Text(
                         '快速瀏覽各運動中心場地預約狀況',
                         style: TextStyle(
                           color: Colors.white.withAlpha(204),
-                          fontSize: 15,
+                          fontSize: 14,
                           letterSpacing: 0.5,
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 64),
+                      const SizedBox(height: 32),
 
                       // 開始查詢按鈕
                       SizedBox(
@@ -154,7 +151,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
                       // 提示文字
                       Text(
-                        '點擊畫面任意位置也可進入',
+                        '點擊畫面任意位置進入',
                         style: TextStyle(
                           color: Colors.white.withAlpha(153),
                           fontSize: 13,

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/slot_availability.dart';
 import '../models/sport_center.dart';
+import '../providers/service_providers.dart';
 
 /// 時段詳細資訊彈窗
-class SlotDetailSheet extends StatelessWidget {
+class SlotDetailSheet extends ConsumerWidget {
   final DayVenueResult dayResult;
   final SportCenter center;
   final String categoryName;
@@ -22,7 +24,8 @@ class SlotDetailSheet extends StatelessWidget {
     return '${date.year}/${date.month.toString().padLeft(2, '0')}/${date.day.toString().padLeft(2, '0')}（$weekday）';
   }
 
-  Future<void> _openBookingUrl(String? url, BuildContext context) async {
+  Future<void> _openBookingUrl(String? url, BuildContext context, WidgetRef ref) async {
+    ref.read(audioServiceProvider).playButton();
     // API 不提供直接預約 URL，統一開啟官方預約系統首頁
     final target = (url != null && url.isNotEmpty)
         ? url
@@ -42,7 +45,7 @@ class SlotDetailSheet extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final availableSlots =
         dayResult.slots.where((s) => s.status == SlotStatus.available).toList();
     final fullSlots =
@@ -133,7 +136,7 @@ class SlotDetailSheet extends StatelessWidget {
                               (slot) => _SlotCard(
                                 slot: slot,
                                 onTap: () => _openBookingUrl(
-                                    slot.directBookingUrl, context),
+                                    slot.directBookingUrl, context, ref),
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -163,7 +166,7 @@ class SlotDetailSheet extends StatelessWidget {
                       child: ElevatedButton.icon(
                         onPressed: () {
                           final url = availableSlots.first.directBookingUrl;
-                          _openBookingUrl(url, context);
+                          _openBookingUrl(url, context, ref);
                         },
                         icon: const Icon(Icons.open_in_browser),
                         label: const Text('前往官方網站預約'),

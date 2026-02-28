@@ -1,5 +1,5 @@
 name: tpsvb
-description: "臺北市公立運動場地預約查詢系統 - Taipei Public Sports Venue Booking"
+description: "場訂 - 台北市公立運動場地預約查詢"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -41,6 +41,8 @@ dependencies:
   shared_preferences: ^2.3.3
   # 外部連結
   url_launcher: ^6.3.1
+  # 音效
+  audioplayers: ^6.1.0
   # App 內 WebView
   webview_flutter: ^4.10.0
 
@@ -65,6 +67,8 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/icon/
+    - assets/sounds/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
