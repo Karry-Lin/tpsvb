@@ -227,7 +227,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
                         const Spacer(),
                         TextButton(
                           onPressed: () => setState(
-                            () => _selectedCenters = SportCenter.all,
+                            () => _selectedCenters = List.from(SportCenter.all),
                           ),
                           child: const Text('全選'),
                         ),
